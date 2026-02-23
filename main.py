@@ -69,7 +69,8 @@ def download_excel(
     JOIN nipos.nipos_pod_url t2
         ON t1.connote__connote_code = t2.connote__connote_code
     WHERE t1.customer_code = %s
-        AND date(t1.connote__created_at) = %s
+        AND t1.connote__created_at >= %s
+        AND t1.connote__created_at < %s
         AND t1.connote__connote_state IN ('DELIVERED (RETURN DELIVERY)','DELIVERED')
     """
 
