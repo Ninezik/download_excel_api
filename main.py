@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query,HTTPException
 from fastapi.responses import Response
 import pandas as pd
 import psycopg2
@@ -28,6 +28,12 @@ def download_excel(
     customer_code: str = Query(..., description="Customer Code"),
     start_date: str = Query(..., description="Format: YYYYMMDD")
 ):
+    
+    if customer_code != "ASRBPJSKES06750A":
+        raise HTTPException(
+            status_code=403,
+            detail="Pelanggan harus didaftarkan terlebih dahulu, hubungi admin."
+        )
 
     # =========================
     # VALIDASI TANGGAL
