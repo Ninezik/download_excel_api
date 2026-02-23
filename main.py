@@ -130,15 +130,16 @@ def download_excel(
                         img = img.convert("RGB")
 
                     # Resize fisik (bukan cuma tampilan)
-                    img.thumbnail((700, 700))  # max pixel
+                    img.thumbnail((250, 250))  # max pixel
 
                     # Compress
                     compressed = BytesIO()
                     img.save(
                         compressed,
                         format="JPEG",
-                        quality=60,       # turunkan kalau mau lebih kecil
-                        optimize=True
+                        quality=30,       # turunkan kalau mau lebih kecil
+                        optimize=True,
+                        progressive=True
                     )
                     compressed.seek(0)
 
