@@ -40,7 +40,10 @@ def download_excel(
     # =========================
     try:
         start_dt = datetime.strptime(start_date, "%Y%m%d")
+        end_dt = start_dt + timedelta(days=1)
         start_date_sql = start_dt.strftime("%Y-%m-%d")
+        end_date_sql = end_dt.strftime("%Y-%m-%d")
+
     except ValueError:
         return {"error": "Format tanggal harus YYYYMMDD"}
 
@@ -74,7 +77,7 @@ def download_excel(
         AND t1.connote__connote_state IN ('DELIVERED (RETURN DELIVERY)','DELIVERED')
     """
 
-    df = pd.read_sql(query, conn, params=(customer_code, start_date_sql))
+    df = pd.read_sql(query, conn, params=(customer_code, start_date_sql, end_date_sql))
     conn.close()
 
     if df.empty:
