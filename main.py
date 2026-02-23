@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query,HTTPException
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import Response
 import pandas as pd
 import psycopg2
@@ -6,8 +6,9 @@ import requests
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image
 from io import BytesIO
-from datetime import datetime,timedelta
-from PIL import Image as PILImage  # <-- tambahan penting
+from datetime import datetime, timedelta
+from PIL import Image as PILImage
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = FastAPI()
 
@@ -28,7 +29,10 @@ def download_excel(
     customer_code: str = Query(..., description="Customer Code"),
     start_date: str = Query(..., description="Format: YYYYMMDD")
 ):
-    
+
+    # =========================
+    # VALIDASI CUSTOMER
+    # =========================
     if customer_code != "ASRBPJSKES06750A":
         raise HTTPException(
             status_code=403,
@@ -43,9 +47,8 @@ def download_excel(
         end_dt = start_dt + timedelta(days=1)
         start_date_sql = start_dt.strftime("%Y-%m-%d")
         end_date_sql = end_dt.strftime("%Y-%m-%d")
-
     except ValueError:
-        return {"error": "Format tanggal harus YYYYMMDD"}
+        raise HTTPException(status_code=400, detail="Format tanggal harus YYYYMMDD")
 
     # =========================
     # CONNECT REDSHIFT
@@ -83,6 +86,13 @@ def download_excel(
     if df.empty:
         return {"message": "Data tidak ditemukan"}
 
+    # Batasi maksimal data (proteksi)
+    if len(df) > 2500:
+        raise HTTPException(
+            status_code=400,
+            detail="Maksimal 2500 data per request."
+        )
+
     # =========================
     # BUAT WORKBOOK
     # =========================
@@ -107,9 +117,6 @@ def download_excel(
                     row_data.append(row[col])
             ws.append(row_data)
 
-        # =========================
-        # INSERT GAMBAR (VERSI COMPRESS)
-        # =========================
         def insert_image_from_url(url, cell):
             if pd.isna(url):
                 return
@@ -117,27 +124,24 @@ def download_excel(
                 response = session.get(
                     url,
                     headers={"User-Agent": "Mozilla/5.0"},
-                    timeout=5
+                    timeout=3
                 )
 
                 if response.status_code == 200:
 
-                    # Buka pakai Pillow
                     img = PILImage.open(BytesIO(response.content))
 
-                    # Convert agar aman untuk JPEG
                     if img.mode in ("RGBA", "P"):
                         img = img.convert("RGB")
 
-                    # Resize fisik (bukan cuma tampilan)
-                    img.thumbnail((250, 250))  # max pixel
+                    # Resize lebih kecil
+                    img.thumbnail((250, 250))
 
-                    # Compress
                     compressed = BytesIO()
                     img.save(
                         compressed,
                         format="JPEG",
-                        quality=30,       # turunkan kalau mau lebih kecil
+                        quality=30,
                         optimize=True,
                         progressive=True
                     )
@@ -145,7 +149,6 @@ def download_excel(
 
                     excel_img = Image(compressed)
 
-                    # Resize tampilan di Excel
                     max_display = 90
                     ratio = min(
                         max_display / excel_img.width,
@@ -162,7 +165,10 @@ def download_excel(
         photo_col = chunk.columns.get_loc("pod__photo") + 1
         sign_col = chunk.columns.get_loc("pod__signature") + 1
 
-        for i in range(len(chunk)):
+        # =========================
+        # PARALLEL INSERT IMAGE
+        # =========================
+        def process_row(i):
             excel_row = i + 2
             ws.row_dimensions[excel_row].height = 85
 
@@ -174,6 +180,11 @@ def download_excel(
 
             insert_image_from_url(photo_url, photo_cell)
             insert_image_from_url(sign_url, sign_cell)
+
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            futures = [executor.submit(process_row, i) for i in range(len(chunk))]
+            for _ in as_completed(futures):
+                pass
 
         ws.column_dimensions[
             ws.cell(row=1, column=photo_col).column_letter
