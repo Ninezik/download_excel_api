@@ -70,7 +70,7 @@ def download_excel(
         ON t1.connote__connote_code = t2.connote__connote_code
     WHERE t1.customer_code = %s
         AND date(t1.connote__created_at) = %s
-        AND connote__connote_state IN ('DELIVERED (RETURN DELIVERY)','DELIVERED')
+        AND t1.connote__connote_state IN ('DELIVERED (RETURN DELIVERY)','DELIVERED')
     """
 
     df = pd.read_sql(query, conn, params=(customer_code, start_date_sql))
