@@ -6,7 +6,7 @@ import requests
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime,timedelta
 from PIL import Image as PILImage  # <-- tambahan penting
 
 app = FastAPI()
