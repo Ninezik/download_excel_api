@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import Response
 import pandas as pd
 import psycopg2
+import pyodbc
 import requests
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image
