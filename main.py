@@ -40,12 +40,12 @@ def download_excel(
     customer_code: str = Query(..., description="Customer Code"),
     start_date: str = Query(..., description="Format: YYYYMMDD")
 ):
-    conn_2 = pyodbc.connect(
-    'DRIVER={ODBC Driver 17 for SQL Server};'
-    f'SERVER={DB_HOST_2};'
-    f'DATABASE={DB_NAME_2};'
-    f'UID={DB_USER_2};'
-    f'PWD={DB_PASSWORD_2}'
+    conn_2 = pymssql.connect(
+    server=DB_HOST_2,
+    user=DB_USER_2,
+    password=DB_PASSWORD_2,
+    database=DB_NAME_2,
+    port=int(DB_PORT_2)
     )
     cursor_2 = conn_2.cursor()
     cursor_2.execute("SELECT TOP 5 * FROM daftar_customer_code_download")
