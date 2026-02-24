@@ -21,6 +21,16 @@ DB_NAME = "posind_kurlog"
 DB_USER = "rda_analis"
 DB_PASSWORD = "GcTz69eZ6UwNnRhypjx9Ysk8"
 
+
+# =========================
+# KONFIG sqlserver
+# =========================
+DB_HOST_2 = "bansosreport-db.cmfru4yoszrg.ap-southeast-3.rds.amazonaws.com"
+DB_PORT_2 = "1433"
+DB_NAME_2 = "DB_REFERENSI"
+DB_USER_2 = "admin"
+DB_PASSWORD_2 = "B4ns05dB"
+
 CHUNK_SIZE = 100  # maksimal 100 row per sheet
 
 
@@ -29,11 +39,21 @@ def download_excel(
     customer_code: str = Query(..., description="Customer Code"),
     start_date: str = Query(..., description="Format: YYYYMMDD")
 ):
+    conn_2 = pyodbc.connect(
+    'DRIVER={ODBC Driver 17 for SQL Server};'
+    f'SERVER={DB_HOST_2};'
+    f'DATABASE={DB_NAME_2};'
+    f'UID={DB_USER_2};'
+    f'PWD={DB_PASSWORD_2}'
+    )
+    cursor_2 = conn_2.cursor()
+    cursor_2.execute("SELECT TOP 5 * FROM daftar_customer_code_download")
+    data_set = {row[0] for row in cursor_2.fetchall()}
 
     # =========================
     # VALIDASI CUSTOMER
     # =========================
-    if customer_code != "ASRBPJSKES06750A":
+    if customer_code not in  data_set:
         raise HTTPException(
             status_code=403,
             detail="Pelanggan harus didaftarkan terlebih dahulu, hubungi admin."
