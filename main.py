@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response,StreamingResponse
 import pandas as pd
 import psycopg2
 import pymssql
@@ -7,6 +7,7 @@ import requests
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image
 from io import BytesIO
+import io
 from datetime import datetime, timedelta
 from PIL import Image as PILImage
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -48,7 +49,7 @@ def download_excel(
     port=int(DB_PORT_2)
     )
     cursor_2 = conn_2.cursor()
-    cursor_2.execute("SELECT TOP 5 * FROM daftar_customer_code_download")
+    cursor_2.execute("SELECT DISTINCT customer_code FROM daftar_customer_code_download")
     data_set = {row[0] for row in cursor_2.fetchall()}
 
     # =========================
@@ -227,6 +228,73 @@ def download_excel(
     return Response(
         content=output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+
+@app.get("/download_detail")
+def download_excel(
+    customer_code: str = Query(..., description="Customer Code"),
+    start_date: str = Query(..., description="Format: YYYYMMDD"),
+    end_date: str = Query(..., description="Format: YYYYMMDD")
+):
+    try:
+        start_dt = datetime.strptime(start_date, "%Y%m%d")
+        end_dt = datetime.strptime(end_date, "%Y%m%d")
+        end_dt=end_dt+ timedelta(days=1)
+        start_date_sql = start_dt.strftime("%Y-%m-%d")
+        end_date_sql = end_dt.strftime("%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Format tanggal harus YYYYMMDD")
+
+    # =========================
+    # CONNECT REDSHIFT
+    # =========================
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+
+    query = """
+    SELECT 
+        t1.connote__connote_code,
+        t1.connote__created_at,
+        t1.customer_code,
+        t1.connote__connote_receiver_name,
+        t1.connote__connote_receiver_address_detail,
+        t1.connote__connote_state,
+        t1.pod__timereceive,
+        t2.pod__photo,
+        t2.pod__signature
+    FROM nipos.nipos t1
+    JOIN nipos.nipos_pod_url t2
+        ON t1.connote__connote_code = t2.connote__connote_code
+    WHERE t1.customer_code = %s
+        AND t1.connote__created_at >= %s
+        AND t1.connote__created_at < %s
+        AND t1.connote__connote_state NOT IN ('CANCEL','PENDING}')
+    """
+
+    df = pd.read_sql(query, conn, params=(customer_code, start_date_sql, end_date_sql))
+    conn.close()
+
+    if df.empty:
+        return {"message": "Data tidak ditemukan"}
+        
+
+    output = io.StringIO()
+    df.to_csv(output, index=False)
+    output.seek(0)
+
+    filename = f"report_{customer_code}_{start_date}_{end_date}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
         headers={
             "Content-Disposition": f"attachment; filename={filename}"
         }
