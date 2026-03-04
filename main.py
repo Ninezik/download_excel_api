@@ -30,6 +30,7 @@ DB_PASSWORD = "GcTz69eZ6UwNnRhypjx9Ysk8"
 DB_HOST_2 = "bansosreport-db.cmfru4yoszrg.ap-southeast-3.rds.amazonaws.com"
 DB_PORT_2 = "1433"
 DB_NAME_2 = "DB_REFERENSI"
+DB_NAME_3='DB_NIPOS'
 DB_USER_2 = "admin"
 DB_PASSWORD_2 = "B4ns05dB"
 
@@ -48,6 +49,14 @@ def download_excel(
     database=DB_NAME_2,
     port=int(DB_PORT_2)
     )
+    conn_3 = pymssql.connect(
+    server=DB_HOST_2,
+    user=DB_USER_2,
+    password=DB_PASSWORD_2,
+    database=DB_NAME_3,
+    port=int(DB_PORT_2)
+    )
+
     cursor_2 = conn_2.cursor()
     cursor_2.execute("SELECT DISTINCT customer_code FROM daftar_customer_code_download")
     data_set = {row[0] for row in cursor_2.fetchall()}
@@ -90,12 +99,8 @@ def download_excel(
         t1.connote__connote_receiver_name,
         t1.connote__connote_receiver_address_detail,
         t1.connote__connote_state,
-        t1.pod__timereceive,
-        t2.pod__photo,
-        t2.pod__signature
+        t1.pod__timereceive
     FROM nipos.nipos t1
-    JOIN nipos.nipos_pod_url t2
-        ON t1.connote__connote_code = t2.connote__connote_code
     WHERE t1.customer_code = %s
         AND t1.connote__created_at >= %s
         AND t1.connote__created_at < %s
@@ -106,7 +111,48 @@ def download_excel(
     conn.close()
 
     if df.empty:
-        return {"message": "Data tidak ditemukan"}
+        return {"message": "Data tidak ditemukan pada redshift"}
+    
+
+    query_df2="""
+    WITH ranked AS (
+        SELECT *,
+            ROW_NUMBER() OVER (
+                PARTITION BY connote_code
+                ORDER BY created_at DESC
+            ) AS rn
+        FROM connote_pod_new
+        WHERE customer_code=%s
+        AND connote__created_at >= %s
+        AND connote__created_at < %s
+    )
+    SELECT ranked.connote_code,
+    coalesce(t2.photo,ranked.photo) pod__photo,
+    ranked.signature pod__signature
+    FROM ranked
+    LEFT JOIN 
+    (SELECT *
+    FROM (
+        SELECT *,
+            ROW_NUMBER() OVER (
+                PARTITION BY connote_code 
+                ORDER BY created_at 
+            ) AS rn_first
+        FROM connote_pod_new
+        WHERE state = 'FAILEDTODELIVERED'
+        AND customer_code=%s
+        AND connote__created_at >= %s
+        AND connote__created_at <= %s
+    ) temp_table
+    WHERE rn_first = 1)t2
+    ON ranked.connote_code=t2.connote_code
+    WHERE ranked.rn = 1
+    """
+    df2 = pd.read_sql(query_df2, conn_3, params=(customer_code, start_date_sql, end_date_sql,customer_code, start_date_sql, end_date_sql))
+    conn_3.close()
+
+    df=pd.merge(df,df2,left_on='connote__connote_code',right_on='connote_code',how='left')
+    df.drop(columns=['connote_code'],inplace=True)
 
     # Batasi maksimal data (proteksi)
     if len(df) > 2500:
